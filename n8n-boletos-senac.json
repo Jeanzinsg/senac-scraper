@@ -1,0 +1,181 @@
+{
+  "name": "Boletos SENAC -> Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b0000000-0000-4000-8000-000000000001",
+      "name": "Todo dia 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://IP_DO_SERVIDOR:3100/senac/boletos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "pdf",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "b0000000-0000-4000-8000-000000000002",
+      "name": "Buscar boletos SENAC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Manda o boleto so na vespera e no dia do vencimento.\nconst DIAS_AVISO = [1, 0];       // 1 = vespera, 0 = no dia\nconst AVISAR_ATRASADO = true;    // true = avisa todo dia enquanto estiver atrasado\n\nconst resp = $input.first().json;\nif (!resp.ok) throw new Error('Scraper falhou: ' + resp.erro);\n\nconst hoje = $now.setZone('America/Sao_Paulo').startOf('day');\nconst brl = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });\n\nconst saida = [];\nfor (const b of resp.boletos) {\n  if (!b.linhaDigitavel || !b.vencimento) continue;\n  const venc = DateTime.fromISO(b.vencimento, { zone: 'America/Sao_Paulo' }).startOf('day');\n  const dias = Math.round(venc.diff(hoje, 'days').days);\n\n  let titulo = null;\n  if (dias === 0 && DIAS_AVISO.includes(0)) titulo = '🔴 <b>Vence HOJE</b>';\n  else if (dias === 1 && DIAS_AVISO.includes(1)) titulo = '⏰ <b>Vence AMANHÃ</b>';\n  else if (dias > 1 && DIAS_AVISO.includes(dias)) titulo = '📅 <b>Vence em ' + dias + ' dias</b>';\n  else if (dias < 0 && AVISAR_ATRASADO) titulo = '⚠️ <b>EM ATRASO</b> há ' + (-dias) + ' dias';\n  if (!titulo) continue;\n\n  const caption = [\n    titulo,\n    '',\n    '<b>' + b.conta + '</b>, parcela ' + b.parcela,\n    'Valor: ' + brl(b.valor),\n    'Vencimento: ' + venc.toFormat('dd/MM/yyyy'),\n    '',\n    'Linha digitável (toque pra copiar):',\n    '<code>' + b.linhaDigitavel + '</code>',\n  ].join('\\n');\n\n  const item = { json: { caption, temPdf: !!b.pdfBase64 } };\n  if (b.pdfBase64) {\n    item.binary = {\n      data: {\n        data: b.pdfBase64,\n        mimeType: 'application/pdf',\n        fileName: 'senac-parcela-' + b.parcela.replace('/', '-') + '.pdf',\n      },\n    };\n  }\n  saida.push(item);\n}\n\nreturn saida;\n"
+      },
+      "id": "b0000000-0000-4000-8000-000000000003",
+      "name": "Filtrar novos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.temPdf }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "b0000000-0000-4000-8000-000000000004",
+      "name": "Tem PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "COLE_SEU_CHAT_ID_AQUI",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "caption": "={{ $json.caption }}",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "b0000000-0000-4000-8000-000000000005",
+      "name": "Enviar PDF",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "COLE_SEU_CHAT_ID_AQUI",
+        "text": "={{ $json.caption }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "b0000000-0000-4000-8000-000000000006",
+      "name": "Enviar texto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Todo dia 8h": {
+      "main": [
+        [
+          {
+            "node": "Buscar boletos SENAC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar boletos SENAC": {
+      "main": [
+        [
+          {
+            "node": "Filtrar novos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar novos": {
+      "main": [
+        [
+          {
+            "node": "Tem PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem PDF?": {
+      "main": [
+        [
+          {
+            "node": "Enviar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {}
+}

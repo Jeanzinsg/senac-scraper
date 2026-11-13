@@ -1,0 +1,13 @@
+services:
+  senac-scraper:
+    build: .
+    container_name: senac-scraper
+    restart: unless-stopped
+    environment:
+      SENAC_USER: ${SENAC_USER}
+      SENAC_PASS: ${SENAC_PASS}
+      API_TOKEN: ${API_TOKEN}
+      PORT: 3100
+    ports:
+      - "3100:3100"
+    ipc: host
