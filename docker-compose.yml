@@ -1,6 +1,7 @@
 services:
   senac-scraper:
     build: .
+    pull_policy: build
     container_name: senac-scraper
     restart: unless-stopped
     environment:
